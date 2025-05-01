@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customizable Spreadsheet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Styles (Optional - Tailwind handles most) */
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font */
+        }
+        /* Ensure input numbers don't have spinners (optional) */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield; /* Firefox */
+        }
+        /* Style for the total column cells (read-only look) */
+        .total-cell {
+            background-color: #e9ecef; /* Light grey background */
+            font-weight: bold;
+            text-align: right;
+            padding-right: 0.75rem; /* Tailwind's pr-3 */
+        }
+        /* Add some basic styling for focus */
+        input:focus, select:focus {
+            outline: 2px solid #3b82f6; /* blue-500 */
+            outline-offset: 1px;
+        }
+        /* Style header cells for interaction */
+        .header-cell {
+            cursor: pointer;
+            position: relative;
+        }
+        .header-cell:hover .edit-icon {
+            opacity: 1;
+        }
+        .edit-icon {
+            opacity: 0.2;
+            transition: opacity 0.2s ease-in-out;
+            font-size: 0.7em;
+            margin-left: 4px;
+        }
+         /* Modal styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1000; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 25px 30px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 450px; /* Limit max width */
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .modal-close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            line-height: 1;
+        }
+        .modal-close:hover,
+        .modal-close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+
+    <div class="container mx-auto max-w-6xl bg-white rounded-lg shadow-md p-6">
+        <h1 class="text-2xl md:text-3xl font-bold text-center text-gray-800 mb-6">Customizable Spreadsheet</h1>
+
+        <div class="controls flex flex-wrap gap-3 mb-6 border-b pb-4">
+            <button id="addColumnBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out">
+                Add Column
+            </button>
+            <button id="addRowBtn" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out">
+                Add Row
+            </button>
+             <button id="clearDataBtn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out ml-auto">
+                Clear All Data
+            </button>
+        </div>
+
+        <div class="table-container overflow-x-auto">
+            <table id="spreadsheetTable" class="min-w-full border border-gray-300">
+                <thead class="bg-gray-200">
+                    <tr id="headerRow">
+                        <th class="p-2 border border-gray-300 w-10 sticky left-0 bg-gray-200 z-10"></th> </tr>
+                </thead>
+                <tbody id="tableBody" class="bg-white">
+                    </tbody>
+            </table>
+        </div>
+         <p id="noDataMessage" class="text-center text-gray-500 mt-6">No columns or rows added yet. Use the buttons above to start.</p>
+    </div>
+
+    <div id="columnModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle" class="text-xl font-semibold mb-4">Add New Column</h2>
+            <input type="hidden" id="editColumnId"> <div class="mb-4">
+                <label for="columnName" class="block text-sm font-medium text-gray-700 mb-1">Column Name:</label>
+                <input type="text" id="columnName" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div class="mb-6">
+                <label for="columnMode" class="block text-sm font-medium text-gray-700 mb-1">Calculation Mode:</label>
+                <select id="columnMode" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white">
+                    <option value="neutral">Neutral (Text/Info)</option>
+                    <option value="addition">Addition (+)</option>
+                    <option value="subtraction">Subtraction (-)</option>
+                    <option value="total">Total (Calculated)</option>
+                </select>
+            </div>
+            <div class="flex justify-end gap-3">
+                 <button id="deleteColumnBtn" onclick="deleteColumn()" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out" style="display: none;">
+                    Delete Column
+                </button>
+                <button onclick="closeModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out">
+                    Cancel
+                </button>
+                <button id="saveColumnBtn" onclick="saveColumn()" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out">
+                    Save Column
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- Constants and State Variables ---
+        const STORAGE_KEY_COLUMNS = 'spreadsheetColumns_v2';
+        const STORAGE_KEY_ROWS = 'spreadsheetRows_v2';
+        const tableHeader = document.getElementById('headerRow');
+        const tableBody = document.getElementById('tableBody');
+        const addColumnBtn = document.getElementById('addColumnBtn');
+        const addRowBtn = document.getElementById('addRowBtn');
+        const clearDataBtn = document.getElementById('clearDataBtn');
+        const columnModal = document.getElementById('columnModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const columnNameInput = document.getElementById('columnName');
+        const columnModeSelect = document.getElementById('columnMode');
+        const editColumnIdInput = document.getElementById('editColumnId');
+        const deleteColumnBtn = document.getElementById('deleteColumnBtn');
+        const saveColumnBtn = document.getElementById('saveColumnBtn');
+        const noDataMessage = document.getElementById('noDataMessage');
+
+
+        let columns = []; // Array of { id, name, mode }
+        let rows = [];    // Array of { id, cells: { colId: value, ... } }
+
+        // --- Utility Functions ---
+        /** Generates a simple unique ID */
+        function generateId(prefix = 'id') {
+            return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        }
+
+        /** Saves current state (columns and rows) to localStorage */
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY_COLUMNS, JSON.stringify(columns));
+                localStorage.setItem(STORAGE_KEY_ROWS, JSON.stringify(rows));
+                console.log("Data saved.");
+                 checkShowNoDataMessage(); // Update message visibility
+            } catch (e) {
+                console.error("Error saving data to localStorage:", e);
+                alert("Could not save data. Local storage might be full or disabled.");
+            }
+        }
+
+        /** Loads data from localStorage */
+        function loadData() {
+            const storedColumns = localStorage.getItem(STORAGE_KEY_COLUMNS);
+            const storedRows = localStorage.getItem(STORAGE_KEY_ROWS);
+            columns = storedColumns ? JSON.parse(storedColumns) : [];
+            rows = storedRows ? JSON.parse(storedRows) : [];
+             checkShowNoDataMessage(); // Update message visibility
+            console.log("Data loaded.");
+        }
+
+        /** Checks if the no data message should be shown */
+        function checkShowNoDataMessage() {
+             if (columns.length === 0 && rows.length === 0) {
+                 noDataMessage.style.display = 'block';
+                 document.getElementById('spreadsheetTable').style.display = 'none';
+             } else {
+                 noDataMessage.style.display = 'none';
+                  document.getElementById('spreadsheetTable').style.display = ''; // Show table (default display)
+             }
+        }
+
+
+        // --- Modal Functions ---
+        function openModal(mode = 'add', columnId = null) {
+            editColumnIdInput.value = ''; // Clear edit ID
+            columnNameInput.value = '';
+            columnModeSelect.value = 'neutral';
+            deleteColumnBtn.style.display = 'none'; // Hide delete btn by default
+             saveColumnBtn.textContent = 'Save Column'; // Default save text
+
+            if (mode === 'edit' && columnId) {
+                const column = columns.find(c => c.id === columnId);
+                if (column) {
+                    modalTitle.textContent = 'Edit Column';
+                    editColumnIdInput.value = columnId;
+                    columnNameInput.value = column.name;
+                    columnModeSelect.value = column.mode;
+                    deleteColumnBtn.style.display = 'inline-block'; // Show delete btn for editing
+                     saveColumnBtn.textContent = 'Update Column'; // Change save text
+                } else {
+                    console.error("Column not found for editing:", columnId);
+                    return; // Don't open modal if column not found
+                }
+            } else {
+                modalTitle.textContent = 'Add New Column';
+            }
+
+            columnModal.style.display = 'flex'; // Use flex to center content
+            columnNameInput.focus();
+        }
+
+        function closeModal() {
+            columnModal.style.display = 'none';
+        }
+
+        // --- Column Operations ---
+        function saveColumn() {
+            const name = columnNameInput.value.trim();
+            const mode = columnModeSelect.value;
+            const editingId = editColumnIdInput.value;
+
+            if (!name) {
+                alert("Please enter a column name.");
+                columnNameInput.focus();
+                return;
+            }
+
+            // Prevent multiple 'total' columns (allow only one)
+            if (mode === 'total' && columns.some(c => c.mode === 'total' && c.id !== editingId)) {
+                 alert("You can only have one 'Total' column.");
+                 columnModeSelect.focus();
+                 return;
+            }
+
+            if (editingId) {
+                // --- Editing existing column ---
+                const columnIndex = columns.findIndex(c => c.id === editingId);
+                if (columnIndex > -1) {
+                    columns[columnIndex].name = name;
+                    columns[columnIndex].mode = mode;
+                    console.log("Column updated:", columns[columnIndex]);
+                }
+            } else {
+                // --- Adding new column ---
+                const newColumn = {
+                    id: generateId('col'),
+                    name: name,
+                    mode: mode
+                };
+                columns.push(newColumn);
+                console.log("Column added:", newColumn);
+
+                // Add a corresponding cell placeholder in all existing rows
+                rows.forEach(row => {
+                    row.cells[newColumn.id] = ''; // Initialize new cell for existing rows
+                });
+            }
+
+            saveData();
+            renderTable(); // Re-render the entire table
+            closeModal();
+        }
+
+        function deleteColumn() {
+             const columnIdToDelete = editColumnIdInput.value;
+             if (!columnIdToDelete) return;
+
+             if (confirm(`Are you sure you want to delete the column "${columns.find(c=>c.id === columnIdToDelete)?.name}" and all its data?`)) {
+                 // Remove the column definition
+                 columns = columns.filter(c => c.id !== columnIdToDelete);
+
+                 // Remove the corresponding cell data from all rows
+                 rows.forEach(row => {
+                     delete row.cells[columnIdToDelete];
+                 });
+
+                 console.log("Column deleted:", columnIdToDelete);
+                 saveData();
+                 renderTable();
+                 closeModal();
+             }
+        }
+
+
+        // --- Row Operations ---
+        function addRow() {
+            const newRow = {
+                id: generateId('row'),
+                cells: {}
+            };
+            // Initialize cells for the new row based on existing columns
+            columns.forEach(col => {
+                newRow.cells[col.id] = ''; // Default to empty string
+            });
+            rows.push(newRow);
+            console.log("Row added:", newRow);
+            saveData();
+            renderTable(); // Could optimize to just append row, but full render is simpler for now
+        }
+
+         function deleteRow(rowId) {
+             if (confirm("Are you sure you want to delete this row?")) {
+                 rows = rows.filter(row => row.id !== rowId);
+                 console.log("Row deleted:", rowId);
+                 saveData();
+                 renderTable(); // Re-render needed
+             }
+         }
+
+        // --- Cell Operations & Calculation ---
+        function updateCellValue(rowId, columnId, value) {
+            const rowIndex = rows.findIndex(row => row.id === rowId);
+            if (rowIndex > -1) {
+                rows[rowIndex].cells[columnId] = value;
+                // Don't save immediately, calculation will trigger save
+                // saveData(); // Avoid saving on every keystroke if possible
+                console.log(`Cell updated: Row ${rowId}, Col ${columnId}, Value: ${value}`);
+                calculateRowTotal(rowId); // Recalculate total for this row
+            }
+        }
+
+        function calculateRowTotal(rowId) {
+            const row = rows.find(row => row.id === rowId);
+            const totalColumn = columns.find(col => col.mode === 'total');
+            if (!row || !totalColumn) return; // No row or no total column defined
+
+            let currentTotal = 0;
+            columns.forEach(col => {
+                if (col.mode === 'addition' || col.mode === 'subtraction') {
+                    const cellValue = parseFloat(row.cells[col.id]) || 0; // Get numeric value, default to 0
+                    if (col.mode === 'addition') {
+                        currentTotal += cellValue;
+                    } else { // Subtraction
+                        currentTotal -= cellValue;
+                    }
+                }
+            });
+
+            // Update the cell value in the data structure
+            row.cells[totalColumn.id] = currentTotal;
+
+            // Update the display in the table
+            const totalCellElement = document.querySelector(`td[data-row-id="${rowId}"][data-column-id="${totalColumn.id}"]`);
+            if (totalCellElement) {
+                totalCellElement.textContent = formatNumber(currentTotal); // Use formatting
+            }
+             // Save data after calculation is complete for the row
+             saveData();
+        }
+
+        /** Formats a number (e.g., for the total column) */
+        function formatNumber(value) {
+            // Simple formatting, could be expanded (e.g., to currency)
+            if (typeof value === 'number') {
+                 // Format to 2 decimal places if it has decimals, otherwise show as integer
+                 return value % 1 !== 0 ? value.toFixed(2) : value.toString();
+            }
+            return value; // Return original value if not a number
+        }
+
+
+        // --- Rendering Functions ---
+        function renderTable() {
+            console.log("Rendering table...");
+            // Clear existing header and body
+            tableHeader.innerHTML = '';
+            tableBody.innerHTML = '';
+
+             // --- Render Header ---
+             // Add corner cell / delete row header
+             const cornerTh = document.createElement('th');
+             cornerTh.className = 'p-2 border border-gray-300 w-10 sticky left-0 bg-gray-200 z-10';
+             tableHeader.appendChild(cornerTh);
+
+            columns.forEach(col => {
+                const th = document.createElement('th');
+                th.className = 'header-cell p-2 border border-gray-300 text-left sticky top-0 bg-gray-200 z-10'; // Sticky header
+                th.textContent = col.name;
+                th.dataset.columnId = col.id; // Store column ID
+                th.title = `Mode: ${col.mode.charAt(0).toUpperCase() + col.mode.slice(1)}\nClick to edit`; // Tooltip
+
+                // Add a small edit icon (optional)
+                const editIcon = document.createElement('span');
+                editIcon.className = 'edit-icon';
+                editIcon.innerHTML = '&#9998;'; // Pencil icon
+                th.appendChild(editIcon);
+
+                // Add click listener to header for editing
+                th.addEventListener('click', () => openModal('edit', col.id));
+                tableHeader.appendChild(th);
+            });
+
+            // --- Render Body ---
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.dataset.rowId = row.id; // Store row ID
+
+                 // Add delete button cell
+                 const deleteBtnTd = document.createElement('td');
+                 deleteBtnTd.className = 'p-0 border border-gray-300 sticky left-0 bg-white z-10'; // Sticky delete button
+                 const deleteBtn = document.createElement('button');
+                 deleteBtn.innerHTML = '&times;'; // Multiplication sign as delete icon
+                 deleteBtn.className = 'text-red-500 hover:text-red-700 font-bold w-full h-full text-center text-lg leading-none p-2';
+                 deleteBtn.title = 'Delete Row';
+                 deleteBtn.onclick = () => deleteRow(row.id);
+                 deleteBtnTd.appendChild(deleteBtn);
+                 tr.appendChild(deleteBtnTd);
+
+
+                columns.forEach(col => {
+                    const td = document.createElement('td');
+                    td.className = 'p-0 border border-gray-300 align-top'; // No padding on TD, input handles it
+                    td.dataset.rowId = row.id;
+                    td.dataset.columnId = col.id;
+
+                    if (col.mode === 'total') {
+                        td.classList.add('total-cell', 'p-2'); // Add padding back for total cell
+                        td.textContent = formatNumber(row.cells[col.id] || 0); // Display calculated value
+                    } else {
+                        const input = document.createElement('input');
+                         // Use 'text' for neutral, 'number' for add/subtract
+                        input.type = (col.mode === 'addition' || col.mode === 'subtraction') ? 'number' : 'text';
+                        if (input.type === 'number') {
+                             input.step = '0.01'; // Allow decimals for numbers
+                        }
+                        input.className = 'w-full h-full p-2 border-none focus:outline-none bg-transparent'; // Fill cell, no border
+                        input.value = row.cells[col.id] || '';
+                        input.dataset.rowId = row.id; // Link input to row/col
+                        input.dataset.columnId = col.id;
+
+                        // Update on input change
+                        input.addEventListener('input', (e) => {
+                            updateCellValue(row.id, col.id, e.target.value);
+                        });
+                         // Also calculate on blur in case input event didn't catch final value properly
+                         input.addEventListener('blur', (e) => {
+                             calculateRowTotal(row.id);
+                         });
+
+                        td.appendChild(input);
+                    }
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+
+             // Recalculate all totals on initial render (in case data was loaded)
+             if(rows.length > 0 && columns.some(c => c.mode === 'total')) {
+                 rows.forEach(row => calculateRowTotal(row.id));
+             }
+             checkShowNoDataMessage(); // Final check after rendering
+        }
+
+        // --- Event Listeners ---
+        addColumnBtn.addEventListener('click', () => openModal('add'));
+        addRowBtn.addEventListener('click', addRow);
+        clearDataBtn.addEventListener('click', () => {
+            if (confirm("Are you sure you want to clear ALL columns, rows, and data? This cannot be undone.")) {
+                columns = [];
+                rows = [];
+                localStorage.removeItem(STORAGE_KEY_COLUMNS);
+                localStorage.removeItem(STORAGE_KEY_ROWS);
+                renderTable();
+            }
+        });
+
+        // Close modal if clicked outside the content area
+        window.addEventListener('click', (event) => {
+            if (event.target === columnModal) {
+                closeModal();
+            }
+        });
+         // Close modal on Escape key
+         window.addEventListener('keydown', (event) => {
+             if (event.key === 'Escape' && columnModal.style.display === 'flex') {
+                 closeModal();
+             }
+         });
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            renderTable();
+        });
+
+    </script>
+
+</body>
+</html>
